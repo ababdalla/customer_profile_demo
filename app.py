@@ -21,18 +21,18 @@ if generar:
         profile = build_customer_profile(cliente_id, fecha_inicio, fecha_fin)
 
     cliente = profile["cliente"]
-   # kpis = profile["kpis"]
+    kpis = profile["kpis"]
 
     st.subheader(cliente["nombre_completo"])
 
-    #col1, col2, col3, col4 = st.columns(4)
-    #col1.metric("Total creditos", f"Q {kpis['total_creditos']:,.2f}")
-    #col2.metric("Total debitos", f"Q {kpis['total_debitos']:,.2f}")
-    #col3.metric("Flujo neto", f"Q {kpis['flujo_neto']:,.2f}")
-    #col4.metric("Cuentas", kpis["cantidad_cuentas"])
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total creditos", f"Q {kpis['total_creditos']:,.2f}")
+    col2.metric("Total debitos", f"Q {kpis['total_debitos']:,.2f}")
+    col3.metric("Flujo neto", f"Q {kpis['flujo_neto']:,.2f}")
+    col4.metric("Cuentas", kpis["cantidad_cuentas"])
 
-    tab1, tab2, tab3 = st.tabs(
-        ["Resumen", "Productos",  "Relaciones"]
+    tab1, tab2, tab3,tab4 = st.tabs(
+        ["Resumen", "Productos", "Transacciones", "Relaciones"]
     )
 
     with tab1:
@@ -57,13 +57,13 @@ if generar:
         st.write("### Cuentas y productos")
         st.dataframe(profile["cuentas"], use_container_width=True)
 
-   #with tab3:
-   #     st.write("### Consolidado mensual")
-   #     st.dataframe(profile["consolidado"], use_container_width=True)
-   #     st.write("### Causas de transaccion")
-   #     st.dataframe(profile["causas"], use_container_width=True)
-
     with tab3:
+        st.write("### Consolidado mensual")
+        st.dataframe(profile["consolidado"], use_container_width=True)
+        st.write("### Causas de transaccion")
+        st.dataframe(profile["causas"], use_container_width=True)
+
+    with tab4:
         st.write("### Cuentas como firmante")
         st.dataframe(profile["cuentas_firmantes"], use_container_width=True)
         st.write("### Terceros relacionados")

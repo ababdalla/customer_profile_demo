@@ -41,30 +41,30 @@ def build_customer_profile(cliente_id: str, fecha_inicio: datetime, fecha_fin: d
         cliente = f_cliente.result()
         cuentas = f_cuentas.result()
         cuentas_firmantes = f_firmantes.result()
-        mensual = f_mensual.result()
+        mensual = anomes_fix(f_mensual.result())
         causas = f_causas.result()
         agencias = f_agencias.result()
         transacciones = f_trans.result()
         ach = f_ach.result()
     
-    #consolidado = tabla_consolidada(mensual)
-    #total_creditos = consolidado["montocreditos_gtq"].sum()
-    #total_debitos = consolidado["montodebitos_gtq"].sum()
+    consolidado = tabla_consolidada(mensual)
+    total_creditos = consolidado["montocreditos_gtq"].sum()
+    total_debitos = consolidado["montodebitos_gtq"].sum()
         
     return {
         "cliente": cliente,
         "cuentas": cuentas,
         "cuentas_firmantes": cuentas_firmantes,
         "mensual": mensual,
-        #"consolidado": consolidado,
+        "consolidado": consolidado,
         "causas": causas,
         "agencias": agencias,
         "transacciones": transacciones,
         "ach": ach,
-        #"kpis": {
-         #   "total_creditos": total_creditos,
-         #   "total_debitos": total_debitos,
-         #   "flujo_neto": total_creditos - total_debitos,
-         #   "cantidad_cuentas": len(cuentas),
-       # },
+        "kpis": {
+            "total_creditos": total_creditos,
+            "total_debitos": total_debitos,
+            "flujo_neto": total_creditos - total_debitos,
+            "cantidad_cuentas": len(cuentas),
+        },
     }
