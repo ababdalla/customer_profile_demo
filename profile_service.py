@@ -10,6 +10,8 @@ from generar_reporte import (
     obtener_agencias,
     obtener_transaccionalidad,
     obtener_ach,
+    empleado_base,
+    alertas_empleado,
 )
 from analisis import (
     anomes_fix,
@@ -24,13 +26,16 @@ def build_customer_profile(cliente_id: str, fecha_inicio: datetime, fecha_fin: d
     anomes_fin = int(fecha_fin.strftime("%Y%m"))
     #1 Disparamos TODO a la vez. submit() no bloquea.
 
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=10) as ex:
         # Pesadas primero: arrancan de inmediato y corren en paralelo
         f_trans = ex.submit(obtener_transaccionalidad,cliente_id,anomes_inicio,anomes_fin)
         f_ach = ex.submit(obtener_ach,cliente_id,anomes_inicio,anomes_fin)
         f_mensual = ex.submit(obtener_mensual,cliente_id,anomes_inicio,anomes_fin)
         f_agencias = ex.submit(obtener_agencias,cliente_id,anomes_inicio,anomes_fin)
         f_causas = ex.submit(obtener_causas,cliente_id,anomes_inicio,anomes_fin)
+        f_empleado = ex.submit(empleado_base,cliente_id)
+        empleado = f_empleado.result()
+        f_alertas = ex.submit(alertas_empleado,empleado)
 
         #Ligeras:
         f_cliente = ex.submit(obtener_cliente,cliente_id)
@@ -46,7 +51,8 @@ def build_customer_profile(cliente_id: str, fecha_inicio: datetime, fecha_fin: d
         agencias = f_agencias.result()
         transacciones = f_trans.result()
         ach = f_ach.result()
-    
+        alertas_fi = f_alertas.result()
+            
     consolidado = tabla_consolidada(mensual)
     total_creditos = consolidado["montocreditos_gtq"].sum()
     total_debitos = consolidado["montodebitos_gtq"].sum()
@@ -60,6 +66,7 @@ def build_customer_profile(cliente_id: str, fecha_inicio: datetime, fecha_fin: d
         "causas": causas,
         "agencias": agencias,
         "transacciones": transacciones,
+        "alertas":alertas_fi,
         "ach": ach,
         "kpis": {
             "total_creditos": total_creditos,
@@ -67,4 +74,5 @@ def build_customer_profile(cliente_id: str, fecha_inicio: datetime, fecha_fin: d
             "flujo_neto": total_creditos - total_debitos,
             "cantidad_cuentas": len(cuentas),
         },
+       
     }

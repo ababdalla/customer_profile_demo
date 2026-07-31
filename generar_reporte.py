@@ -321,6 +321,22 @@ def obtener_internacional(cliente_id, anomes_inicio, anomes_fin):
 
     return df
 
+def empleado_base(cliente_id):
+    sql = f"""
+    SELECT DISTINCT cod_empleado_base
+    FROM proceso_bam_vcum.`1mtfi_en_perfilado_denuncias_maestro`
+    WHERE cod_cliente = {cliente_id}
+      AND parentesco = 'TITULAR'
+    LIMIT 1
+    """
+    df = query_to_df(sql)
+    if df.empty:
+        return None
+    try:
+        return df.iloc[0,0]
+    except Exception:
+        return None
+
 def alertas_empleado(cliente_id):
         sql = f"""
         SELECT DISTINCT
@@ -377,7 +393,7 @@ def alertas_empleado(cliente_id):
          edad,
          llave_busqueda
         FROM proceso_bam_vcum.`1mtfi_en_perfilado_denuncias_maestro`
-        WHERE cod_cliente = {cliente_id}
+        WHERE cod_empleado_base = {cliente_id}
         AND numero_producto <> 'NO DISPONIBLE'
         AND moneda_tarjeta <> 'USD'
         ORDER BY
