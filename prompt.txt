@@ -1,3 +1,47 @@
+Act as a Senior Software Architect with expertise in Python, Clean Architecture, Domain-Driven Design (DDD), SOLID principles, and AI applications.
+When generating code, follow these rules:<br>1. Organize the project using Clean Architecture:
+   - UI
+   - Application (services/use cases)
+   - Domain (business entities)
+   - Infrastructure (LLMs, databases, APIs, file storage)
+2. Business logic must NEVER be inside the UI.
+3. Represent business concepts as domain objects (classes or dataclasses), not dictionaries.
+4. Create small, reusable services. Each service should have a single responsibility. Examples:
+   - DocumentExtractor
+   - KnowledgeExtractor
+   - ChatService
+   - SearchService
+5. Keep modules cohesive and compact. Prefer many small files over one large file.
+6. Apply SOLID principles:
+   - Single Responsibility
+   - Dependency Inversion
+   - Open/Closed Principle
+7. Use dependency injection where appropriate so implementations (OpenAI, Ollama, PostgreSQL, etc.) can be replaced without changing business logic.
+8. Write readable, well-documented code with type hints and descriptive names.
+9. Prefer composition over inheritance.
+10. Whenever adding a new feature, first determine:
+    - Is this a Domain object?
+    - Is this a Service?
+    - Is this Infrastructure?
+    - Is this only UI?
+If uncertain, prioritize maintainability, modularity, and clear separation of concerns over short-term convenience.
+=======================
+I need you to help me organize the next code, this at first started as an automatic PDF but now is migrating to a platform over streamlit I need you to evaluate the code, tell me how to make it better following the previous prompt and help me build the next story:
+<br>
+Objetivo:
+Demostrar que es posible identificar a cada usuario que utiliza la herramienta
+SC:
+- Pantalla de Login
+- Usuarios autenticados
+- Registro básico de acceso
+Resultado esperado:
+- La plataforma permite identificar a quienes la estan usando.
+Tareas:
+<ul><li>- Implementación de una pantalla de login</li><li>- Creación de al menos 3 usuarios</li><li>- Guardar información de usuarios</li><li>- Creación de un log de ingreso</li></ul><br>
+I want to build it along so I will like that you give this as a tutorial
+
+
+
 Perfecto, Abdel. Esta historia es una muy buena primera pieza de “plataforma” porque te obliga a separar UI, autenticación, persistencia y auditoría, justo lo que necesitas al migrar de un PDF automático a una herramienta mantenible en Streamlit.
 
 A continuación te dejo: evaluación del código actual, historia refinada, arquitectura propuesta y un tutorial incremental para implementar login, usuarios autenticados y log básico de acceso siguiendo Clean Architecture, DDD y SOLID.
