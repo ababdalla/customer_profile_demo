@@ -321,6 +321,77 @@ def obtener_internacional(cliente_id, anomes_inicio, anomes_fin):
 
     return df
 
+def alertas_empleado(cliente_id):
+        sql = f"""
+        SELECT DISTINCT
+            cod_empleado_base,
+         cod_cliente,
+         categoria_persona,
+         parentesco,
+         nombre_completo,
+         cui,
+         tipo_documento,
+         profesion,
+         telefono,
+         correo,
+         direccion,
+         empresa,
+         division,
+         unidad,
+         puesto,
+         jefe_directo,
+         anos_antiguedad,
+         fecha_de_ingreso,
+         ingreso_mensual,
+         tipo_ingreso,
+         tipo_producto,
+         numero_producto,
+         categoria,
+         descripcion_producto,
+         agencia,
+         fecha_apertura,
+         estado,
+         detalle_estado,
+         limite_credito_tc,
+         saldo_actual_tc,
+         saldo_disponible_tc,
+         saldo_cuenta,
+         numero_caso,
+         canal_recepcion_denuncia,
+         clasificacion_denuncia,
+         fecha_recepcion,
+         fecha_asignacion,
+         contexto_denuncia,
+         operador,
+         jornada,
+         zona,
+         vicepresidencia,
+         socio_estrategico,
+         usuario_cobis,
+         consecutivo_cobis,
+         usuario_bancolombia,
+         moneda,
+         moneda_tarjeta,
+         profesion_actividad_economica,
+         productos_activos,
+         edad,
+         llave_busqueda
+        FROM proceso_bam_vcum.`1mtfi_en_perfilado_denuncias_maestro`
+        WHERE cod_cliente = {cliente_id}
+        AND numero_producto <> 'NO DISPONIBLE'
+        AND moneda_tarjeta <> 'USD'
+        ORDER BY
+         CASE WHEN parentesco = 'TITULAR' THEN 1 ELSE 2 END,
+         parentesco,
+         tipo_producto;
+        """
+        df = query_to_df(sql)
+        if df.empty:
+            return None
+        try:
+            return df
+        except Exception:
+            return None
 
 def main():
 
@@ -336,6 +407,8 @@ def main():
     anomes_inicio = int(fecha_inicio.strftime("%Y%m"))
     anomes_fin = int(fecha_fin.strftime("%Y%m"))
 
+    alertas =alertas_empleado(args.Id_Cliente)
+    print(alertas)
     cliente = obtener_cliente(args.Id_Cliente)
     ing_extra = cliente["monto_extra"] or 0
     ing_ofi = cliente["ingresos_reportados"] or 0
