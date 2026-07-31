@@ -1,0 +1,878 @@
+Perfecto, Abdel. Esta historia es una muy buena primera pieza de “plataforma” porque te obliga a separar UI, autenticación, persistencia y auditoría, justo lo que necesitas al migrar de un PDF automático a una herramienta mantenible en Streamlit.
+
+A continuación te dejo: evaluación del código actual, historia refinada, arquitectura propuesta y un tutorial incremental para implementar login, usuarios autenticados y log básico de acceso siguiendo Clean Architecture, DDD y SOLID.
+
+1. Evaluación rápida de tu código actual
+
+Tu código ya tiene una separación inicial entre UI y servicios, pero todavía está muy acoplado.
+
+Lo que ya está bien
+
+En app.py ya existe una UI Streamlit separada que llama a build_customer_profile(cliente_id, fecha_inicio, fecha_fin) desde profile_service.py, lo cual es un buen primer paso para no poner toda la consulta dentro de la pantalla.
+
+También tienes datasources.py como punto central para la conexión a Impala mediante get_connection() y query_to_df(sql), lo cual te permite empezar a encapsular infraestructura.
+
+Problemas principales según Clean Architecture
+1. La UI todavía conoce demasiado de la estructura interna
+
+En app.py, la pantalla accede directamente a profile["cliente"], profile["kpis"], profile["alertas"], profile["cuentas"], profile["consolidado"], profile["causas"], entre otros elementos. Eso indica que el caso de uso devuelve un diccionario grande y la UI conoce demasiado de la estructura interna del perfil.
+
+Mejor enfoque: devolver un objeto de dominio o un DTO de aplicación como CustomerProfileViewModel.
+
+2. generar_reporte.py mezcla demasiadas responsabilidades
+
+generar_reporte.py contiene consultas SQL como obtener_cliente, obtener_cuentas, obtener_mensual, obtener_ach, lógica de preparación de datos, orquestación del reporte, CLI con argparse y llamada a generar_pdf.
+
+Eso viola principalmente:
+
+Single Responsibility Principle.
+Separation of Concerns.
+Dependency Inversion.
+
+Mejor enfoque: separar:
+
+Infrastructure:
+  ImpalaCustomerRepository
+  ImpalaTransactionRepository
+
+Application:
+  BuildCustomerProfileUseCase
+
+Domain:
+  Customer
+  Account
+  TransactionSummary
+  CustomerProfile
+
+UI:
+  Streamlit pages
+
+3. Hay SQL construido con f-strings
+
+En generar_reporte.py, consultas como where clienteId = '{cliente_id}' interpolan directamente el valor de cliente_id en SQL.
+
+Riesgo: inyección SQL o errores por valores mal formateados.
+
+Mejor enfoque: crear un repositorio y validar cliente_id antes de construir consultas. Si tu driver permite parámetros, usarlos. Si Impala/pyodbc limita eso en tu ambiente, al menos centralizar validación estricta.
+
+4. La autenticación no debería agregarse directamente dentro de app.py
+
+app.py actualmente es la pantalla principal de consulta del perfil de cliente. Para esta historia, no conviene meter ahí toda la lógica de login, validación de contraseña y escritura del log.
+
+Mejor enfoque: crear servicios pequeños:
+
+AuthenticationService
+UserRepository
+AccessLogRepository
+PasswordHasher
+
+La UI solo debe preguntar: “¿este usuario puede entrar?” y “¿quién está autenticado?”.
+
+2. Historia refinada
+Historia de usuario
+
+Como responsable o miembro del equipo de LegalTech,
+ quiero que la plataforma tenga una pantalla de login con usuarios autenticados,
+ para poder identificar qué personas están utilizando la herramienta y dejar un registro básico de acceso.
+
+3. Criterios de aceptación
+CA1. Pantalla de login
+
+Dado que un usuario abre la plataforma,
+ cuando no tiene una sesión autenticada,
+ entonces debe visualizar una pantalla de login antes de acceder al perfil de cliente.
+
+CA2. Usuarios autenticados
+
+Dado que existen usuarios registrados,
+ cuando el usuario ingresa credenciales válidas,
+ entonces el sistema debe autenticarlo y permitirle acceder a la plataforma.
+
+CA3. Usuarios inválidos
+
+Dado que un usuario ingresa credenciales incorrectas,
+ cuando intenta iniciar sesión,
+ entonces el sistema debe rechazar el acceso y mostrar un mensaje genérico de error.
+
+Importante: mensaje genérico, no decir “usuario no existe” o “contraseña incorrecta”, para no revelar información.
+
+CA4. Registro básico de acceso
+
+Dado que un usuario intenta iniciar sesión,
+ cuando el intento finaliza,
+ entonces el sistema debe guardar un log con usuario, fecha/hora, resultado y origen básico.
+
+CA5. Usuarios iniciales
+
+Dado que se está implementando la primera versión,
+ cuando se inicialice el sistema,
+ entonces deben existir al menos 3 usuarios de prueba o usuarios internos configurados.
+
+4. Resultado esperado
+
+La plataforma permite identificar quién está utilizando la herramienta, bloquea el acceso no autenticado y genera un registro básico de intentos de ingreso.
+
+5. Arquitectura propuesta para esta historia
+
+Esta historia pertenece a varias capas:
+
+Domain:
+  User
+  LoginEvent
+
+Application:
+  AuthenticationService
+  LoginUseCase
+
+Infrastructure:
+  JsonUserRepository
+  CsvAccessLogRepository
+  Pbkdf2PasswordHasher
+
+UI:
+  StreamlitLoginPage
+  Session management
+
+6. Estructura de carpetas recomendada
+
+Te recomiendo empezar con algo así:
+
+customer_profile_platform/
+│
+├── src/
+│   ├── domain/
+│   │   ├── users.py
+│   │   └── access_log.py
+│   │
+│   ├── application/
+│   │   ├── ports/
+│   │   │   ├── user_repository.py
+│   │   │   ├── access_log_repository.py
+│   │   │   └── password_hasher.py
+│   │   │
+│   │   └── services/
+│   │       └── authentication_service.py
+│   │
+│   ├── infrastructure/
+│   │   ├── security/
+│   │   │   └── pbkdf2_password_hasher.py
+│   │   │
+│   │   └── persistence/
+│   │       ├── json_user_repository.py
+│   │       └── csv_access_log_repository.py
+│   │
+│   ├── ui/
+│   │   └── streamlit/
+│   │       ├── login_page.py
+│   │       └── app.py
+│   │
+│   └── bootstrap.py
+│
+├── data/
+│   ├── users.json
+│   └── access_log.csv
+│
+└── scripts/
+    └── create_initial_users.py
+
+
+Si todavía no quieres mover todo el proyecto, puedes crear esta estructura poco a poco y dejar tus archivos actuales funcionando mientras migras.
+
+7. Tutorial paso a paso
+Paso 1. Crear objetos de dominio
+
+Archivo:
+
+src/domain/users.py
+
+from dataclasses import dataclass
+from datetime import datetime
+
+
+@dataclass(frozen=True)
+class User:
+    username: str
+    full_name: str
+    role: str
+    password_hash: str
+    is_active: bool = True
+
+
+@dataclass(frozen=True)
+class AuthenticatedUser:
+    username: str
+    full_name: str
+    role: str
+    authenticated_at: datetime
+
+
+Archivo:
+
+src/domain/access_log.py
+
+from dataclasses import dataclass
+from datetime import datetime
+
+
+@dataclass(frozen=True)
+class LoginEvent:
+    username: str
+    attempted_at: datetime
+    success: bool
+    message: str
+    source: str = "streamlit"
+
+Por qué esto es Domain
+
+User, AuthenticatedUser y LoginEvent son conceptos de negocio. No son diccionarios. Representan cosas que existen en tu plataforma.
+
+Paso 2. Crear puertos de aplicación
+
+Los puertos son interfaces. La aplicación depende de abstracciones, no de archivos JSON, CSV, bases de datos o Streamlit.
+
+Archivo:
+
+src/application/ports/user_repository.py
+
+from abc import ABC, abstractmethod
+from typing import Optional
+
+from src.domain.users import User
+
+
+class UserRepository(ABC):
+    @abstractmethod
+    def find_by_username(self, username: str) -> Optional[User]:
+        raise NotImplementedError
+
+
+Archivo:
+
+src/application/ports/access_log_repository.py
+
+from abc import ABC, abstractmethod
+
+from src.domain.access_log import LoginEvent
+
+
+class AccessLogRepository(ABC):
+    @abstractmethod
+    def save(self, event: LoginEvent) -> None:
+        raise NotImplementedError
+
+
+Archivo:
+
+src/application/ports/password_hasher.py
+
+from abc import ABC, abstractmethod
+
+
+class PasswordHasher(ABC):
+    @abstractmethod
+    def hash_password(self, plain_password: str) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
+    def verify_password(self, plain_password: str, password_hash: str) -> bool:
+        raise NotImplementedError
+
+Paso 3. Crear el servicio de autenticación
+
+Archivo:
+
+src/application/services/authentication_service.py
+
+from datetime import datetime
+
+from src.application.ports.access_log_repository import AccessLogRepository
+from src.application.ports.password_hasher import PasswordHasher
+from src.application.ports.user_repository import UserRepository
+from src.domain.access_log import LoginEvent
+from src.domain.users import AuthenticatedUser
+
+
+class AuthenticationError(Exception):
+    pass
+
+
+class AuthenticationService:
+    def __init__(
+        self,
+        user_repository: UserRepository,
+        password_hasher: PasswordHasher,
+        access_log_repository: AccessLogRepository,
+    ) -> None:
+        self._user_repository = user_repository
+        self._password_hasher = password_hasher
+        self._access_log_repository = access_log_repository
+
+    def login(self, username: str, password: str) -> AuthenticatedUser:
+        normalized_username = username.strip().lower()
+        attempted_at = datetime.now()
+
+        user = self._user_repository.find_by_username(normalized_username)
+
+        if user is None:
+            self._register_failed_attempt(
+                username=normalized_username,
+                attempted_at=attempted_at,
+                message="Invalid credentials",
+            )
+            raise AuthenticationError("Credenciales inválidas.")
+
+        if not user.is_active:
+            self._register_failed_attempt(
+                username=normalized_username,
+                attempted_at=attempted_at,
+                message="Inactive user",
+            )
+            raise AuthenticationError("Credenciales inválidas.")
+
+        password_is_valid = self._password_hasher.verify_password(
+            plain_password=password,
+            password_hash=user.password_hash,
+        )
+
+        if not password_is_valid:
+            self._register_failed_attempt(
+                username=normalized_username,
+                attempted_at=attempted_at,
+                message="Invalid credentials",
+            )
+            raise AuthenticationError("Credenciales inválidas.")
+
+        authenticated_user = AuthenticatedUser(
+            username=user.username,
+            full_name=user.full_name,
+            role=user.role,
+            authenticated_at=attempted_at,
+        )
+
+        self._access_log_repository.save(
+            LoginEvent(
+                username=user.username,
+                attempted_at=attempted_at,
+                success=True,
+                message="Login successful",
+            )
+        )
+
+        return authenticated_user
+
+    def _register_failed_attempt(
+        self,
+        username: str,
+        attempted_at: datetime,
+        message: str,
+    ) -> None:
+        self._access_log_repository.save(
+            LoginEvent(
+                username=username,
+                attempted_at=attempted_at,
+                success=False,
+                message=message,
+            )
+        )
+
+Qué logramos aquí
+El servicio no sabe si los usuarios vienen de JSON, PostgreSQL, Active Directory u otro sistema.
+El servicio no sabe que existe Streamlit.
+El servicio siempre registra intentos exitosos y fallidos.
+El mensaje público es genérico.
+Paso 4. Implementar el hasher de contraseñas
+
+Para una demo interna inicial, puedes usar hashlib.pbkdf2_hmac de Python. Para producción, lo ideal sería integrarlo con SSO corporativo, Microsoft Entra ID o el mecanismo definido por Seguridad de la Información.
+
+Archivo:
+
+src/infrastructure/security/pbkdf2_password_hasher.py
+
+import base64
+import hashlib
+import hmac
+import os
+
+
+class Pbkdf2PasswordHasher:
+    def __init__(self, iterations: int = 390_000) -> None:
+        self._iterations = iterations
+
+    def hash_password(self, plain_password: str) -> str:
+        salt = os.urandom(16)
+        password_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            plain_password.encode("utf-8"),
+            salt,
+            self._iterations,
+        )
+
+        encoded_salt = base64.b64encode(salt).decode("utf-8")
+        encoded_hash = base64.b64encode(password_hash).decode("utf-8")
+
+        return f"pbkdf2_sha256${self._iterations}${encoded_salt}${encoded_hash}"
+
+    def verify_password(self, plain_password: str, password_hash: str) -> bool:
+        algorithm, iterations, encoded_salt, encoded_expected_hash = password_hash.split("$")
+
+        if algorithm != "pbkdf2_sha256":
+            return False
+
+        salt = base64.b64decode(encoded_salt)
+        expected_hash = base64.b64decode(encoded_expected_hash)
+
+        calculated_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            plain_password.encode("utf-8"),
+            salt,
+            int(iterations),
+        )
+
+        return hmac.compare_digest(calculated_hash, expected_hash)
+
+Paso 5. Implementar repositorio de usuarios en JSON
+
+Archivo:
+
+src/infrastructure/persistence/json_user_repository.py
+
+import json
+from pathlib import Path
+from typing import Optional
+
+from src.application.ports.user_repository import UserRepository
+from src.domain.users import User
+
+
+class JsonUserRepository(UserRepository):
+    def __init__(self, file_path: Path) -> None:
+        self._file_path = file_path
+
+    def find_by_username(self, username: str) -> Optionalusers = self._load_users()
+
+        for user_data in users:
+            if user_data["username"].lower() == username.lower():
+                return User(
+                    username=user_data["username"],
+                    full_name=user_data["full_name"],
+                    role=user_data["role"],
+                    password_hash=user_data["password_hash"],
+                    is_active=user_data.get("is_active", True),
+                )
+
+        return None
+
+    def _load_users(self) -> list[dict]:
+        if not self._file_path.exists():
+            return []
+
+        with self._file_path.open("r", encoding="utf-8") as file:
+            return json.load(file)
+
+
+Nota arquitectónica: aquí sí usamos diccionarios porque estamos leyendo JSON. Pero esos diccionarios no salen de infraestructura. Se convierten inmediatamente en objetos User.
+
+Paso 6. Implementar log de acceso en CSV
+
+Archivo:
+
+src/infrastructure/persistence/csv_access_log_repository.py
+
+import csv
+from pathlib import Path
+
+from src.application.ports.access_log_repository import AccessLogRepository
+from src.domain.access_log import LoginEvent
+
+
+class CsvAccessLogRepository(AccessLogRepository):
+    def __init__(self, file_path: Path) -> None:
+        self._file_path = file_path
+
+    def save(self, event: LoginEvent) -> None:
+        file_exists = self._file_path.exists()
+
+        with self._file_path.open("a", newline="", encoding="utf-8") as file:
+            writer = csv.DictWriter(
+                file,
+                fieldnames=[
+                    "username",
+                    "attempted_at",
+                    "success",
+                    "message",
+                    "source",
+                ],
+            )
+
+            if not file_exists:
+                writer.writeheader()
+
+            writer.writerow(
+                {
+                    "username": event.username,
+                    "attempted_at": event.attempted_at.isoformat(),
+                    "success": event.success,
+                    "message": event.message,
+                    "source": event.source,
+                }
+            )
+
+Paso 7. Crear bootstrap de dependencias
+
+Este archivo arma los objetos concretos. Así evitas crear dependencias directamente dentro de la UI.
+
+Archivo:
+
+src/bootstrap.py
+
+from pathlib import Path
+
+from src.application.services.authentication_service import AuthenticationService
+from src.infrastructure.persistence.csv_access_log_repository import CsvAccessLogRepository
+from src.infrastructure.persistence.json_user_repository import JsonUserRepository
+from src.infrastructure.security.pbkdf2_password_hasher import Pbkdf2PasswordHasher
+
+
+def build_authentication_service() -> AuthenticationService:
+    data_dir = Path("data")
+    data_dir.mkdir(exist_ok=True)
+
+    user_repository = JsonUserRepository(data_dir / "users.json")
+    access_log_repository = CsvAccessLogRepository(data_dir / "access_log.csv")
+    password_hasher = Pbkdf2PasswordHasher()
+
+    return AuthenticationService(
+        user_repository=user_repository,
+        password_hasher=password_hasher,
+        access_log_repository=access_log_repository,
+    )
+
+Paso 8. Crear script para usuarios iniciales
+
+Archivo:
+
+scripts/create_initial_users.py
+
+import json
+from pathlib import Path
+
+from src.infrastructure.security.pbkdf2_password_hasher import Pbkdf2PasswordHasher
+
+
+def main() -> None:
+    data_dir = Path("data")
+    data_dir.mkdir(exist_ok=True)
+
+    hasher = Pbkdf2PasswordHasher()
+
+    users = [
+        {
+            "username": "admin",
+            "full_name": "Administrador Plataforma",
+            "role": "admin",
+            "password_hash": hasher.hash_password("Admin123!"),
+            "is_active": True,
+        },
+        {
+            "username": "analista1",
+            "full_name": "Analista Cumplimiento 1",
+            "role": "analyst",
+            "password_hash": hasher.hash_password("Analista123!"),
+            "is_active": True,
+        },
+        {
+            "username": "analista2",
+            "full_name": "Analista Cumplimiento 2",
+            "role": "analyst",
+            "password_hash": hasher.hash_password("Analista456!"),
+            "is_active": True,
+        },
+    ]
+
+    output_path = data_dir / "users.json"
+
+    with output_path.open("w", encoding="utf-8") as file:
+        json.dump(users, file, indent=2, ensure_ascii=False)
+
+    print(f"Usuarios creados en {output_path}")
+
+
+if __name__ == "__main__":
+    main()
+
+
+Ejecutas:
+
+python scripts/create_initial_users.py
+
+
+Esto crea los 3 usuarios necesarios para cumplir la historia.
+
+Paso 9. Crear pantalla de login
+
+Archivo:
+
+src/ui/streamlit/login_page.py
+
+import streamlit as st
+
+from src.application.services.authentication_service import AuthenticationError
+from src.bootstrap import build_authentication_service
+
+
+def render_login_page() -> bool:
+    if "authenticated_user" in st.session_state:
+        return True
+
+    st.title("Ingreso a Plataforma Perfil de Cliente")
+    st.caption("Ingrese sus credenciales para continuar.")
+
+    with st.form("login_form"):
+        username = st.text_input("Usuario")
+        password = st.text_input("Contraseña", type="password")
+        submitted = st.form_submit_button("Ingresar")
+
+    if not submitted:
+        return False
+
+    authentication_service = build_authentication_service()
+
+    try:
+        authenticated_user = authentication_service.login(
+            username=username,
+            password=password,
+        )
+    except AuthenticationError:
+        st.error("Credenciales inválidas.")
+        return False
+
+    st.session_state["authenticated_user"] = authenticated_user
+    st.rerun()
+
+    return True
+
+
+def render_logout_button() -> None:
+    authenticated_user = st.session_state.get("authenticated_user")
+
+    if authenticated_user is None:
+        return
+
+    with st.sidebar:
+        st.caption(f"Usuario: {authenticated_user.full_name}")
+        st.caption(f"Rol: {authenticated_user.role}")
+
+        if st.button("Cerrar sesión"):
+            del st.session_state["authenticated_user"]
+            st.rerun()
+
+Paso 10. Integrarlo en tu app actual
+
+Tu app.py hoy inicia directamente con st.set_page_config, título, sidebar de consulta y llamada a build_customer_profile.
+
+Puedes modificarlo así:
+
+Archivo:
+
+src/ui/streamlit/app.py
+
+from datetime import date
+
+import streamlit as st
+
+from profile_service import build_customer_profile
+from src.ui.streamlit.login_page import render_login_page, render_logout_button
+
+
+st.set_page_config(page_title="Perfil de Cliente", layout="wide")
+
+is_authenticated = render_login_page()
+
+if not is_authenticated:
+    st.stop()
+
+render_logout_button()
+
+st.title("Perfil de Cliente")
+
+with st.sidebar:
+    st.header("Consulta")
+    cliente_id = st.text_input("Cliente ID")
+    fecha_inicio = st.date_input("Fecha inicio", value=date(2025, 4, 1))
+    fecha_fin = st.date_input("Fecha fin", value=date(2026, 4, 1))
+    generar = st.button("Generar perfil")
+
+if generar:
+    if not cliente_id.strip():
+        st.warning("Ingrese un Cliente ID.")
+        st.stop()
+
+    with st.spinner("Consultando datos del cliente..."):
+        profile = build_customer_profile(cliente_id, fecha_inicio, fecha_fin)
+
+    cliente = profile["cliente"]
+    kpis = profile["kpis"]
+    alertas = profile["alertas"]
+
+    st.subheader(cliente["nombre_completo"])
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total créditos", f"Q {kpis['total_creditos']:,.2f}")
+    col2.metric("Total débitos", f"Q {kpis['total_debitos']:,.2f}")
+    col3.metric("Flujo neto", f"Q {kpis['flujo_neto']:,.2f}")
+    col4.metric("Cuentas", kpis["cantidad_cuentas"])
+
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["Resumen", "Productos", "Transacciones", "Relaciones", "Info alertas"]
+    )
+
+    with tab1:
+        st.write("### Perfil del cliente")
+        st.dataframe(cliente, use_container_width=True)
+
+    with tab2:
+        st.write("### Cuentas y productos")
+        st.dataframe(profile["cuentas"], use_container_width=True)
+
+    with tab3:
+        st.write("### Consolidado mensual")
+        st.dataframe(profile["consolidado"], use_container_width=True)
+
+        st.write("### Causas de transacción")
+        st.dataframe(profile["causas"], use_container_width=True)
+
+    with tab4:
+        st.write("### Cuentas como firmante")
+        st.dataframe(profile["cuentas_firmantes"], use_container_width=True)
+
+        st.write("### Terceros relacionados")
+        st.dataframe(profile["transacciones"], use_container_width=True)
+
+        st.write("### ACH")
+        st.dataframe(profile["ach"], use_container_width=True)
+
+    with tab5:
+        st.write("### Datos de alerta")
+        st.dataframe(alertas, use_container_width=True)
+
+
+Este paso aún no corrige toda la arquitectura del perfil de cliente, pero sí permite implementar la historia de login sin romper lo que ya tienes.
+
+8. Cómo deberías pensar esta historia en Clean Architecture
+
+Cuando agregas una feature, aplica tu regla:
+
+¿Es Domain object?
+
+Sí:
+
+User
+AuthenticatedUser
+LoginEvent
+¿Es Service?
+
+Sí:
+
+AuthenticationService
+¿Es Infrastructure?
+
+Sí:
+
+Leer usuarios desde JSON.
+Guardar logs en CSV.
+Hashear contraseñas con PBKDF2.
+¿Es solo UI?
+
+Sí:
+
+Formulario de login.
+Botón de cerrar sesión.
+Mostrar usuario autenticado en sidebar.
+9. Checklist de tareas de la historia
+Tarea 1. Implementación de pantalla de login
+Crear login_page.py.
+Mostrar formulario si no hay sesión.
+Bloquear acceso con st.stop() si no está autenticado.
+Tarea 2. Creación de al menos 3 usuarios
+Crear scripts/create_initial_users.py.
+Generar data/users.json.
+No guardar contraseñas en texto plano.
+Tarea 3. Guardar información de usuarios
+Crear JsonUserRepository.
+Guardar username, full_name, role, password_hash, is_active.
+Convertir JSON a objeto User.
+Tarea 4. Creación de log de ingreso
+Crear LoginEvent.
+Crear CsvAccessLogRepository.
+Registrar intentos exitosos y fallidos.
+Guardar username, attempted_at, success, message, source.
+10. Definition of Done
+
+La historia puede considerarse terminada cuando:
+
+La plataforma no permite ver el perfil de cliente sin login.
+Existen al menos 3 usuarios iniciales.
+Las contraseñas no están guardadas en texto plano.
+El sistema identifica al usuario autenticado en st.session_state.
+El sidebar muestra el usuario autenticado.
+Existe un botón de cerrar sesión.
+Se registra cada intento de login en data/access_log.csv.
+La lógica de autenticación no está dentro de app.py.
+La lógica queda separada en Domain, Application, Infrastructure y UI.
+11. Recomendación importante para tu contexto bancario
+
+Para esta primera historia, JSON y CSV están bien como demo controlada o MVP técnico. Pero para una plataforma interna de cumplimiento, mi recomendación arquitectónica sería evolucionar así:
+
+MVP:
+  JSON users + CSV logs
+
+Siguiente versión:
+  Tabla de usuarios + tabla de logs en base de datos
+
+Versión corporativa:
+  Microsoft Entra ID / SSO + auditoría centralizada
+
+
+No pondría autenticación casera como solución final si la herramienta va a manejar información sensible de clientes, investigaciones o alertas.
+
+12. Próximo refactor recomendado después de esta historia
+
+Después del login, la siguiente mejora natural sería reemplazar el diccionario gigante de build_customer_profile por objetos más claros. Actualmente profile_service.py devuelve un diccionario con cliente, cuentas, cuentas_firmantes, mensual, consolidado, causas, agencias, transacciones, alertas, ach y kpis.
+
+Algo mejor sería:
+
+@dataclass(frozen=True)
+class CustomerProfile:
+    customer: Customer
+    accounts: list[Account]
+    signer_accounts: list[SignerAccount]
+    monthly_summary: pd.DataFrame
+    consolidated_summary: pd.DataFrame
+    transaction_causes: pd.DataFrame
+    agencies: pd.DataFrame
+    related_transactions: pd.DataFrame
+    alerts: pd.DataFrame
+    ach_transactions: pd.DataFrame
+    kpis: CustomerProfileKpis
+
+
+Pero no lo haría todavía en esta historia. Primero implementa login, deja una base limpia, y luego migras el perfil por partes.
+
+Resumen ejecutivo
+
+Para esta historia, no metas login dentro de app.py. Crea una miniarquitectura limpia alrededor de autenticación:
+
+Domain:
+  User, LoginEvent
+
+Application:
+  AuthenticationService
+
+Infrastructure:
+  JsonUserRepository, CsvAccessLogRepository, Pbkdf2PasswordHasher
+
+UI:
+  Streamlit Login Page
+
+
+Con esto cumples la historia, mejoras la mantenibilidad y preparas el proyecto para crecer hacia roles, permisos, auditoría formal y eventualmente SSO corporativo.
