@@ -2,7 +2,7 @@ import csv
 from pathlib import Path
 
 from src.application.ports.access_log_repository import AccessLogRepository
-from src.domain.access_log import LoginEvent
+from src.domain.login_event import LoginEvent
 
 
 class CsvAccessLogRepository(AccessLogRepository):

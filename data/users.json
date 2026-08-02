@@ -1,0 +1,23 @@
+[
+  {
+    "username": "admin",
+    "full_name": "Administrador Plataforma",
+    "role": "admin",
+    "password_hash": "pbkdf2_sha256$390000$Ex7/tvhsnMX2eALAvjHw3Q==$A2x363eGtoXfInjxLbFHrITa7yCGXNTXtUvs406a3+g=",
+    "is_active": true
+  },
+  {
+    "username": "analista1",
+    "full_name": "Analista Cumplimiento 1",
+    "role": "analyst",
+    "password_hash": "pbkdf2_sha256$390000$BZqlxyUHltYThrNWMNoPfA==$qeOed5aIBUd3745PCdvSB/HhXGfHaNmCK4iHanNg8ZY=",
+    "is_active": true
+  },
+  {
+    "username": "analista2",
+    "full_name": "Analista Cumplimiento 2",
+    "role": "analyst",
+    "password_hash": "pbkdf2_sha256$390000$9j2NgWRcTInNih3IH/sz8g==$CTxS+cxl6OJfksvQO2s3Xveyrn9MBCyS02pxDsBOIhk=",
+    "is_active": true
+  }
+]

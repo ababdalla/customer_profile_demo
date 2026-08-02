@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 from src.application.ports.user_repository import UserRepository
-from src.domain.users import User
+from src.domain.user import User
 
 class JsonUserRepository(UserRepository):
     def __init__(self,file_path:Path)->None:

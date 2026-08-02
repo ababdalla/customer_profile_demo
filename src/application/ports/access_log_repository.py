@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from src.domain.access_log import LoginEvent
+from src.domain.login_event import LoginEvent
 
 class AccessLogRepository(ABC):
     @abstractmethod

@@ -1,0 +1,2 @@
+username,attempted_at,success,message,source
+admin,2026-08-02T10:10:02.555137,True,Login successful,streamlit

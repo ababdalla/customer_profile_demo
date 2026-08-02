@@ -3,9 +3,16 @@ from datetime import date
 import streamlit as st
 
 from profile_service import build_customer_profile
+from src.presentation.streamlit.login_page import render_login_page,render_logout_button
 
 
 st.set_page_config(page_title="Perfil de Cliente", layout="wide")
+is_authenticated = render_login_page()
+
+if not is_authenticated:
+    st.stop()
+
+render_logout_button()
 
 st.title("Perfil de Cliente")
 
